@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8f394910942e1445b24355e45121dce, type: 3}
+  m_Name: LightCard
+  m_EditorClassIdentifier: Assembly-CSharp::CardData
+  cardName: LIGHT
+  icon: {fileID: 9027602052982257527, guid: 13d52df2ed586fc44892c71632288b48, type: 3}
+  themeColor: {r: 0.19433957, g: 0.38997063, b: 1, a: 0}
+  actions:
+  - label: 
+    effectLogic: {fileID: 11400000, guid: 43233bbbb9249ca4fa05f018c3d87c66, type: 2}
+    value: 20
+  - label: 
+    effectLogic: {fileID: 11400000, guid: 142846a1f53247d40897dc394e126c5f, type: 2}
+    value: 0
+  description: 

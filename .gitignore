@@ -1,0 +1,34 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+MemoryCaptures/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Visual Studio / Rider
+.vs/
+*.csproj
+*.sln
+*.user
+*.suo
+.idea/
+
+# User-specific Unity settings
+UserSettings/
+*.userprefs
+
+# Unity cache server
+Cache/
+
+# Asset Store tools
+Assets/AssetStoreTools*
+
+# Others
+*.apk
+*.aab
