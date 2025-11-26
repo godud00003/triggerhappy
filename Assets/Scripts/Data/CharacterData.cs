@@ -1,16 +1,25 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-// [핵심] 우클릭 -> Create -> TriggerHappy -> Character Data로 캐릭터를 찍어낼 수 있음
 [CreateAssetMenu(fileName = "New Character", menuName = "TriggerHappy/Character Data")]
 public class CharacterData : ScriptableObject
 {
-    [Header("기본 정보")]
-    public string characterName;  // 캐릭터 이름 (예: LENA)
-    public Sprite portrait;       // 전신 일러스트 혹은 초상화
-    public int maxHp = 100;       // 최대 체력
+    [Header("📝 기본 정보")]
+    public string characterName;
+    [TextArea] public string description;
 
-    [Header("전용 덱 설정")]
-    // 이 캐릭터가 게임 시작할 때 들고 나갈 카드들
+    [Header("🎨 비주얼")]
+    public Sprite portrait;       // UI 표시용 초상화
+    public GameObject modelPrefab; // 인게임 모델 (Spine/3D)
+
+    [Header("⚔️ 전투 스탯")]
+    public int maxHp = 100;
+    public int defense = 0;
+
+    [Header("🔫 무기 전략 (Strategy)")]
+    // [중요] 캐릭터 교체 시 이 전략에 따라 카드 텍스트/효과가 변함
+    public WeaponData weaponStrategy;
+
+    [Header("🃏 초기 덱")]
     public List<CardData> startingDeck;
 }

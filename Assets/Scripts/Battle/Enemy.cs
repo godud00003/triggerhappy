@@ -2,72 +2,231 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections;
+using System.Collections.Generic;
+
+[System.Serializable]
+public class EnemyState
+{
+    public EnemyData data;
+    public int currentHp;
+    public Dictionary<StatusEffectType, int> statusEffects = new Dictionary<StatusEffectType, int>();
+
+    public EnemyState(EnemyData data)
+    {
+        this.data = data;
+        this.currentHp = data.maxHp;
+        this.statusEffects = new Dictionary<StatusEffectType, int>();
+    }
+}
 
 public class Enemy : MonoBehaviour
 {
     [Header("데이터 연결")]
-    public EnemyData data;
+    public EnemyState activeState;
 
-    [Header("실시간 상태")]
-    public int currentHp;
+    // [핵심] 군단 대기열 (Squad Pool)
+    public List<EnemyState> reservePool = new List<EnemyState>();
+
+    // 인스펙터 할당용
+    public List<EnemyData> startingReserveList;
 
     [Header("UI 연결")]
     public Image hpBarFill;
     public TextMeshProUGUI hpText;
     public Image enemyImage;
+    public TextMeshProUGUI statusText;
+    public TextMeshProUGUI reserveCountText;
+
+    [Header("★ 군단 기능 (Squad System)")]
+    public GameObject minionPrefab;
 
     private BattleManager battleManager;
+
+    public int currentHp => activeState != null ? activeState.currentHp : 0;
+    public EnemyData data => activeState != null ? activeState.data : null;
 
     void Start()
     {
         if (battleManager == null)
             battleManager = FindFirstObjectByType<BattleManager>();
 
-        if (data != null) Setup(data);
-        else
+        if (activeState == null && data != null)
         {
-            Debug.LogWarning($"[Enemy] {gameObject.name}에 EnemyData가 연결되지 않았습니다!");
-            currentHp = 100;
-            UpdateUI();
+            Setup(data, startingReserveList);
         }
+
+        if (minionPrefab == null) minionPrefab = gameObject;
     }
 
-    public void Setup(EnemyData enemyData)
+    public void Setup(EnemyData mainData, List<EnemyData> subDataList = null)
     {
-        data = enemyData;
-        currentHp = data.maxHp;
+        activeState = new EnemyState(mainData);
 
-        if (enemyImage != null && data.sprite != null)
+        reservePool.Clear();
+        if (subDataList != null)
         {
-            enemyImage.sprite = data.sprite;
+            foreach (var subData in subDataList)
+                if (subData != null) reservePool.Add(new EnemyState(subData));
         }
+        else if (startingReserveList != null)
+        {
+            foreach (var subData in startingReserveList)
+                if (subData != null) reservePool.Add(new EnemyState(subData));
+        }
+
+        UpdateVisuals();
+        UpdateUI();
+    }
+
+    public void ApplyStatus(StatusEffectType type, int amount)
+    {
+        if (type == StatusEffectType.None || activeState == null) return;
+
+        if (activeState.statusEffects.ContainsKey(type))
+            activeState.statusEffects[type] += amount;
+        else
+            activeState.statusEffects.Add(type, amount);
 
         UpdateUI();
     }
 
     public void TakeDamage(int amount)
     {
-        currentHp -= amount;
-        if (currentHp < 0) currentHp = 0;
+        if (activeState == null) return;
+
+        int finalDamage = amount;
+        if (activeState.statusEffects.ContainsKey(StatusEffectType.Wound))
+        {
+            int woundStack = activeState.statusEffects[StatusEffectType.Wound];
+            if (woundStack > 0) finalDamage += woundStack;
+        }
+
+        activeState.currentHp -= finalDamage;
+        if (activeState.currentHp < 0) activeState.currentHp = 0;
 
         UpdateUI();
         StartCoroutine(HitEffect());
 
-        string targetName = (data != null) ? data.enemyName : "Unknown Enemy";
-        Debug.Log($"{targetName} 체력: {currentHp}");
-
-        if (currentHp <= 0) Die();
+        if (activeState.currentHp <= 0) Die();
     }
 
+    // AI 행동 결정
     public void DoAttack()
     {
         if (battleManager == null)
-        {
             battleManager = FindFirstObjectByType<BattleManager>();
-            if (battleManager == null) return;
+
+        if (battleManager) StartCoroutine(EnemyTurnRoutine());
+    }
+
+    IEnumerator EnemyTurnRoutine()
+    {
+        bool shouldSwap = false;
+        bool hitAndRun = false; // 때리고 튀기 (게릴라)
+
+        // [전술 AI] 예시 패턴
+        if (reservePool.Count > 0)
+        {
+            float hpRatio = (float)activeState.currentHp / activeState.data.maxHp;
+
+            // 1. 위기 상황: 체력 30% 이하면 교체해서 도망감
+            if (hpRatio <= 0.3f && Random.value < 0.5f)
+            {
+                shouldSwap = true;
+            }
+            // 2. 게릴라 전술: 체력 많을 때 20% 확률로 때리고 교체 (Hit & Run)
+            else if (hpRatio > 0.7f && Random.value < 0.2f)
+            {
+                hitAndRun = true;
+            }
         }
 
-        StartCoroutine(AttackRoutine());
+        if (shouldSwap)
+        {
+            // 공격 없이 바로 교체 (도망/정비)
+            yield return StartCoroutine(SwapRoutine());
+        }
+        else if (hitAndRun)
+        {
+            // 공격 후 교체 (치고 빠지기)
+            yield return StartCoroutine(AttackRoutine());
+            yield return new WaitForSeconds(0.5f);
+            yield return StartCoroutine(SwapRoutine());
+        }
+        else
+        {
+            // 일반 공격
+            yield return StartCoroutine(AttackRoutine());
+        }
+    }
+
+    // 1:1 순환 교체 (Rotation)
+    IEnumerator SwapRoutine()
+    {
+        if (reservePool.Count == 0) yield break;
+
+        EnemyState nextEnemy = reservePool[0];
+        Debug.Log($"🔄 [Enemy] 태그! {activeState.data.enemyName} -> {nextEnemy.data.enemyName}");
+
+        // 사라짐 연출
+        if (enemyImage) enemyImage.color = new Color(1, 1, 1, 0.5f);
+        yield return new WaitForSeconds(0.3f);
+
+        // 데이터 스왑 (현재 적은 대기열 맨 뒤로)
+        reservePool.RemoveAt(0);
+        reservePool.Add(activeState);
+        activeState = nextEnemy;
+
+        // 등장 연출
+        UpdateVisuals();
+        UpdateUI();
+
+        if (enemyImage) enemyImage.color = Color.white;
+        yield return new WaitForSeconds(0.5f);
+    }
+
+    // 1:N 소환 (Deploy)
+    public void DeployReserveMember(Transform spawnLocation)
+    {
+        if (reservePool.Count == 0) return;
+
+        EnemyState deployState = reservePool[0];
+        reservePool.RemoveAt(0);
+
+        GameObject minionObj = Instantiate(minionPrefab, spawnLocation.position, Quaternion.identity, spawnLocation.parent);
+        Enemy minionScript = minionObj.GetComponent<Enemy>();
+
+        minionScript.activeState = deployState;
+        minionScript.Setup(deployState.data);
+
+        if (battleManager != null)
+        {
+            battleManager.spawnedEnemies.Add(minionScript);
+        }
+
+        UpdateVisuals();
+        Debug.Log($"📢 [Enemy] 지원군 소환! {deployState.data.enemyName} 등장!");
+    }
+
+    // N:1 흡수 (Absorb)
+    public void AbsorbAlly(Enemy targetAlly)
+    {
+        if (targetAlly == null || targetAlly == this) return;
+
+        Debug.Log($"🌪️ [Enemy] {activeState.data.enemyName}가 {targetAlly.data.enemyName}를 흡수(합류)합니다!");
+
+        if (targetAlly.activeState != null)
+        {
+            reservePool.Add(targetAlly.activeState);
+            if (targetAlly.reservePool.Count > 0)
+                reservePool.AddRange(targetAlly.reservePool);
+        }
+
+        if (battleManager != null)
+            battleManager.spawnedEnemies.Remove(targetAlly);
+
+        Destroy(targetAlly.gameObject);
+        UpdateVisuals();
     }
 
     IEnumerator AttackRoutine()
@@ -86,22 +245,40 @@ public class Enemy : MonoBehaviour
 
         yield return new WaitForSeconds(0.2f);
         transform.position = originalPos;
+    }
 
-        if (battleManager != null)
+    void UpdateVisuals()
+    {
+        if (enemyImage != null && data != null && data.sprite != null)
         {
-            battleManager.EndEnemyTurn();
+            enemyImage.sprite = data.sprite;
+        }
+
+        if (reserveCountText != null)
+        {
+            reserveCountText.text = reservePool.Count > 0 ? $"+{reservePool.Count}" : "";
         }
     }
 
     void UpdateUI()
     {
-        int maxHealth = (data != null) ? data.maxHp : 100;
+        if (activeState == null || data == null) return;
 
         if (hpBarFill != null)
-            hpBarFill.fillAmount = (float)currentHp / maxHealth;
+            hpBarFill.fillAmount = (float)activeState.currentHp / data.maxHp;
 
         if (hpText != null)
-            hpText.text = $"{currentHp} / {maxHealth}";
+            hpText.text = $"{activeState.currentHp} / {data.maxHp}";
+
+        if (statusText != null)
+        {
+            string statusStr = "";
+            foreach (var pair in activeState.statusEffects)
+            {
+                if (pair.Value > 0) statusStr += $"{pair.Key}: {pair.Value}\n";
+            }
+            statusText.text = statusStr;
+        }
     }
 
     IEnumerator HitEffect()
@@ -109,17 +286,36 @@ public class Enemy : MonoBehaviour
         if (enemyImage != null) enemyImage.color = Color.red;
         yield return new WaitForSeconds(0.1f);
         if (enemyImage != null) enemyImage.color = Color.white;
-
-        Vector3 originalPos = transform.position;
-        transform.position = originalPos + (Vector3)Random.insideUnitCircle * 10f;
-        yield return new WaitForSeconds(0.05f);
-        transform.position = originalPos;
     }
 
     void Die()
     {
-        string targetName = (data != null) ? data.enemyName : "Unknown Enemy";
-        Debug.Log($"{targetName} 처치됨!");
-        // gameObject.SetActive(false); // 승리 연출을 위해 잠시 주석 처리 (필요 시 해제)
+        // 사망 시: 대기열 있으면 증원, 없으면 전사
+        if (reservePool.Count > 0)
+        {
+            Debug.Log($"💀 [Enemy] {activeState.data.enemyName} 사망! 다음 타자 등판!");
+            StartCoroutine(ReinforceRoutine());
+        }
+        else
+        {
+            Debug.Log("💀 [Enemy] 전멸! 완전 처치됨!");
+            if (battleManager != null) battleManager.spawnedEnemies.Remove(this);
+            gameObject.SetActive(false);
+        }
+    }
+
+    IEnumerator ReinforceRoutine()
+    {
+        if (enemyImage) enemyImage.color = Color.clear;
+        yield return new WaitForSeconds(0.5f);
+
+        activeState = reservePool[0];
+        reservePool.RemoveAt(0);
+
+        UpdateVisuals();
+        UpdateUI();
+        if (enemyImage) enemyImage.color = Color.white;
+
+        Debug.Log($"👹 [Enemy] {activeState.data.enemyName} 난입!");
     }
 }

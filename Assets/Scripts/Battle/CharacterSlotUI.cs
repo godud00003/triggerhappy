@@ -5,46 +5,84 @@ using TMPro;
 public class CharacterSlotUI : MonoBehaviour
 {
     [Header("UI 연결")]
-    public Image portraitImage;      // 초상화
-    public TextMeshProUGUI nameText; // 이름
-    public TextMeshProUGUI hpText;   // HP 숫자 (100/100)
-    public Image hpBarFill;          // HP 게이지 (빨간색)
+    public Image portraitImage;
+    public TextMeshProUGUI nameText;
+    public TextMeshProUGUI hpText;
+    public Image hpBarFill;
 
-    // 이 슬롯에 데이터를 채워넣는 함수
+    [Header("상호작용")]
+    // 인스펙터에서 Add Component -> Button 후 연결하세요
+    public Button slotButton;
+
+    public CharacterData CurrentData { get; private set; }
+    private BattleManager battleManager;
+
+    void Start()
+    {
+        battleManager = FindFirstObjectByType<BattleManager>();
+
+        if (slotButton == null) slotButton = GetComponent<Button>();
+
+        if (slotButton != null)
+        {
+            slotButton.onClick.RemoveAllListeners();
+            slotButton.onClick.AddListener(OnClickSlot);
+        }
+    }
+
     public void Setup(CharacterData data, int currentHp)
     {
+        CurrentData = data;
+
         if (data == null)
         {
-            // 데이터가 없으면 숨김 (혹은 빈칸 처리)
             gameObject.SetActive(false);
             return;
         }
 
         gameObject.SetActive(true);
-
         if (portraitImage) portraitImage.sprite = data.portrait;
         if (nameText) nameText.text = data.characterName;
 
         UpdateHp(currentHp, data.maxHp);
     }
 
-    // 체력만 따로 갱신하는 함수
     public void UpdateHp(int current, int max)
     {
         if (hpText) hpText.text = $"{current}/{max}";
 
         if (hpBarFill)
         {
-            // Simple 타입이면 스케일 조절, Filled 타입이면 fillAmount 조절
-            // (범용성을 위해 두 방식 모두 지원하도록 작성)
             if (hpBarFill.type == Image.Type.Filled)
-            {
                 hpBarFill.fillAmount = (float)current / max;
-            }
             else
-            {
                 hpBarFill.rectTransform.localScale = new Vector3((float)current / max, 1, 1);
+        }
+    }
+
+    public void SetInteractable(bool isInteractable)
+    {
+        if (slotButton)
+        {
+            slotButton.interactable = isInteractable;
+
+            // 시각적 피드백 (회색 처리)
+            if (portraitImage)
+            {
+                portraitImage.color = isInteractable ? Color.white : new Color(0.5f, 0.5f, 0.5f, 1f);
             }
+        }
+    }
+
+    // 클릭 이벤트
+    void OnClickSlot()
+    {
+        // [디버깅] 클릭 시 이 로그가 안 뜨면 Raycast Target 문제입니다.
+        Debug.Log($"[UI] 슬롯 클릭됨: {CurrentData?.characterName}");
+
+        if (battleManager != null && CurrentData != null)
+        {
+            battleManager.OnClick_SubCharacter(CurrentData);
         }
     }
 }

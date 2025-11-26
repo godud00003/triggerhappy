@@ -13,7 +13,10 @@ MonoBehaviour:
   m_Name: Boss_Robot
   m_EditorClassIdentifier: Assembly-CSharp::EnemyData
   enemyName: Killer Robot
+  description: 
   sprite: {fileID: -3665590914495025489, guid: b99a7252800af064f9d588e082804963, type: 3}
-  maxHp: 20
+  prefab: {fileID: 2434234997187995732, guid: d9592bef8314dc148adc84ca71edf314, type: 3}
+  maxHp: 200
   attackPower: 20
   attackDelay: 0.5
+  patterns: []
