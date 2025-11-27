@@ -70,6 +70,7 @@ public class BattleManager : MonoBehaviour
     [HideInInspector] public List<CardData> currentDeck = new List<CardData>();
     [HideInInspector] public List<CardData> currentDiscard = new List<CardData>();
     [HideInInspector] public CharacterData activeCharacter;
+    [HideInInspector] public bool isEffectRunning = false;
 
     #region [Bridge Properties] (UI 매니저 연결용)
     public Transform cylinderPivot => uiManager.cylinderPivot;
@@ -343,6 +344,12 @@ public class BattleManager : MonoBehaviour
         current = Mathf.Max(current - amount, 0);
         characterHpMap[activeCharacter] = current;
 
+        // ★ 플레이어 피격 데미지 팝업 (isPlayer: true)
+        if (DamagePopupManager.Instance != null && uiManager != null && uiManager.mainCharUI != null)
+        {
+            DamagePopupManager.Instance.SpawnAtTransform(uiManager.mainCharUI.transform, amount, false, true);
+        }
+
         UpdateAllHpUI();
 
         if (current <= 0)
@@ -351,6 +358,7 @@ public class BattleManager : MonoBehaviour
             ChangeState(stateEnd);
         }
     }
+
 
     public void ApplyDamageToEnemy(int amount)
     {
@@ -388,6 +396,13 @@ public class BattleManager : MonoBehaviour
         int current = characterHpMap[activeCharacter];
         current = Mathf.Min(current + amount, max);
         characterHpMap[activeCharacter] = current;
+
+        // ★ 힐 팝업
+        if (DamagePopupManager.Instance != null && uiManager != null && uiManager.mainCharUI != null)
+        {
+            DamagePopupManager.Instance.SpawnHeal(uiManager.mainCharUI.transform, amount);
+        }
+
         UpdateAllHpUI();
     }
 

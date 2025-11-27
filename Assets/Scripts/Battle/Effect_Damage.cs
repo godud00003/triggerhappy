@@ -7,5 +7,8 @@ public class Effect_Damage : CardEffect
     {
         gm.ApplyDamageToEnemy(amount);
         Debug.Log($"⚔️ [Damage] {amount}");
+
+        // ★ 단일 데미지는 즉시 완료
+        gm.isEffectRunning = false;
     }
 }

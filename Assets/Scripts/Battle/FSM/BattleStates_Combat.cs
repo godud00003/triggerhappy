@@ -139,23 +139,40 @@ public class State_Resolution : BattleState
                     yield break; // 발사 중단하고 QTE 상태로 전환
                 }
 
-                // 3. 카드 효과 발동
+                // 3. 카드 효과 발동 (★ 완료까지 대기)
                 if (slot.loadedCard.actions != null)
                 {
                     foreach (var act in slot.loadedCard.actions)
                     {
-                        if (act.effectLogic) act.effectLogic.OnUse(manager, act.value);
+                        if (act.effectLogic != null)
+                        {
+                            // ★ 효과 실행하고 완료까지 대기
+                            yield return manager.StartCoroutine(
+                                ExecuteEffectAndWait(act.effectLogic, act.value)
+                            );
+                        }
                     }
                 }
 
                 // 4. 발사 이펙트 및 정리
                 slot.PlayFireEffect();
-                manager.DiscardCard(slot.loadedCard);
-                slot.ClearSlot();
+
+                // ★ SP카드는 소멸, 일반 카드는 묘지로
+                if (slot.isSpecialCard)
+                {
+                    Debug.Log($"💨 [SP Card] '{slot.loadedCard.cardName}' 소멸!");
+                    slot.ClearSlot(sendToDiscard: false); // 묘지로 안 감
+                }
+                else
+                {
+                    slot.ClearSlot(sendToDiscard: true); // 묘지로 감
+                }
 
                 // 적 사망 체크
                 if (manager.currentEnemy == null || manager.currentEnemy.currentHp <= 0)
                 {
+                    // ★ 승리 시에도 실린더 초기화
+                    ResetCylinder();
                     yield break; // 승리 처리는 BattleManager.ApplyDamageToEnemy에서 함
                 }
 
@@ -163,8 +180,37 @@ public class State_Resolution : BattleState
             }
         }
 
+        // ★ 발사 완료 후 실린더 회전 초기화
+        ResetCylinder();
+
         // 모든 발사가 끝나면 적 턴으로 이동
         manager.ChangeState(manager.stateEnemyTurn);
+    }
+
+    // ★ 카드 효과 실행 및 완료 대기 래퍼
+    IEnumerator ExecuteEffectAndWait(CardEffect effect, int value)
+    {
+        // 효과 실행 전 플래그 설정
+        manager.isEffectRunning = true;
+
+        // 효과 실행
+        effect.OnUse(manager, value);
+
+        // ★ 효과가 끝날 때까지 대기 (isEffectRunning이 false가 될 때까지)
+        while (manager.isEffectRunning)
+        {
+            yield return null;
+        }
+    }
+
+    // ★ 실린더 회전 초기화 메서드
+    void ResetCylinder()
+    {
+        if (manager.cylinderPivot != null)
+        {
+            manager.cylinderPivot.rotation = Quaternion.identity;
+            Debug.Log("🔄 [Cylinder] 회전 초기화 완료");
+        }
     }
 }
 
@@ -271,6 +317,12 @@ public class State_QTE_Slow : BattleState
 
         if (manager.uiManager)
             manager.uiManager.SetActiveQTE(false);
+
+        // ★ QTE 끝나도 실린더 초기화
+        if (manager.cylinderPivot != null)
+        {
+            manager.cylinderPivot.rotation = Quaternion.identity;
+        }
     }
 }
 

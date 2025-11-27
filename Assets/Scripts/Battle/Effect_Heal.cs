@@ -7,5 +7,8 @@ public class Effect_Heal : CardEffect
     {
         gm.HealPlayer(amount);
         Debug.Log($"💚 [Heal] {amount}");
+
+        // ★ 힐은 즉시 완료
+        gm.isEffectRunning = false;
     }
 }

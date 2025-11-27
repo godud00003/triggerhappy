@@ -41,5 +41,9 @@ public class Effect_Barrage : CardEffect
             // 3. 연출 딜레이 (타-다-다-닥)
             yield return new WaitForSeconds(delayPerHit);
         }
+
+        // ★ 효과 완료 알림
+        gm.isEffectRunning = false;
+        Debug.Log("✅ [Barrage] 다단히트 완료");
     }
 }

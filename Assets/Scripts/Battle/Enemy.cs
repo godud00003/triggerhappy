@@ -95,14 +95,31 @@ public class Enemy : MonoBehaviour
         if (activeState == null) return;
 
         int finalDamage = amount;
+        bool hasWound = false;
+
         if (activeState.statusEffects.ContainsKey(StatusEffectType.Wound))
         {
             int woundStack = activeState.statusEffects[StatusEffectType.Wound];
-            if (woundStack > 0) finalDamage += woundStack;
+            if (woundStack > 0)
+            {
+                finalDamage += woundStack;
+                hasWound = true;
+            }
         }
 
         activeState.currentHp -= finalDamage;
         if (activeState.currentHp < 0) activeState.currentHp = 0;
+
+        // ★ 데미지 팝업 표시
+        if (DamagePopupManager.Instance != null)
+        {
+            // enemyImage가 있으면 그 위치 사용, 없으면 자기 자신
+            Transform popupTarget = (enemyImage != null) ? enemyImage.transform : transform;
+            DamagePopupManager.Instance.SpawnAtTransform(popupTarget, finalDamage, hasWound);
+        }
+
+        // ★ 적 스킬: 피해 받을 때
+        TriggerSkills_OnTakeDamage(finalDamage);
 
         UpdateUI();
         StartCoroutine(HitEffect());
@@ -231,6 +248,9 @@ public class Enemy : MonoBehaviour
 
     IEnumerator AttackRoutine()
     {
+        // ★ 적 스킬: 공격 전
+        TriggerSkills_OnBeforeAttack();
+
         float delay = (data != null) ? data.attackDelay : 0.5f;
         yield return new WaitForSeconds(delay);
 
@@ -245,6 +265,9 @@ public class Enemy : MonoBehaviour
 
         yield return new WaitForSeconds(0.2f);
         transform.position = originalPos;
+
+        // ★ 적 스킬: 공격 후
+        TriggerSkills_OnAfterAttack();
     }
 
     void UpdateVisuals()
@@ -290,6 +313,9 @@ public class Enemy : MonoBehaviour
 
     void Die()
     {
+        // ★ 적 스킬: 사망 시
+        TriggerSkills_OnDeath();
+
         // 사망 시: 대기열 있으면 증원, 없으면 전사
         if (reservePool.Count > 0)
         {
@@ -318,4 +344,68 @@ public class Enemy : MonoBehaviour
 
         Debug.Log($"👹 [Enemy] {activeState.data.enemyName} 난입!");
     }
+
+    #region [스킬 시스템]
+
+    /// <summary>
+    /// 턴 시작 시 모든 스킬 호출
+    /// </summary>
+    public void TriggerSkills_OnTurnStart()
+    {
+        if (data == null || data.enemySkills == null) return;
+        foreach (var skill in data.enemySkills)
+        {
+            if (skill != null) skill.OnTurnStart(this, battleManager);
+        }
+    }
+
+    /// <summary>
+    /// 공격 전 모든 스킬 호출
+    /// </summary>
+    void TriggerSkills_OnBeforeAttack()
+    {
+        if (data == null || data.enemySkills == null) return;
+        foreach (var skill in data.enemySkills)
+        {
+            if (skill != null) skill.OnBeforeAttack(this, battleManager);
+        }
+    }
+
+    /// <summary>
+    /// 공격 후 모든 스킬 호출
+    /// </summary>
+    void TriggerSkills_OnAfterAttack()
+    {
+        if (data == null || data.enemySkills == null) return;
+        foreach (var skill in data.enemySkills)
+        {
+            if (skill != null) skill.OnAfterAttack(this, battleManager);
+        }
+    }
+
+    /// <summary>
+    /// 피해 받을 때 모든 스킬 호출
+    /// </summary>
+    void TriggerSkills_OnTakeDamage(int damage)
+    {
+        if (data == null || data.enemySkills == null) return;
+        foreach (var skill in data.enemySkills)
+        {
+            if (skill != null) skill.OnTakeDamage(this, battleManager, damage);
+        }
+    }
+
+    /// <summary>
+    /// 사망 시 모든 스킬 호출
+    /// </summary>
+    void TriggerSkills_OnDeath()
+    {
+        if (data == null || data.enemySkills == null) return;
+        foreach (var skill in data.enemySkills)
+        {
+            if (skill != null) skill.OnDeath(this, battleManager);
+        }
+    }
+
+    #endregion
 }

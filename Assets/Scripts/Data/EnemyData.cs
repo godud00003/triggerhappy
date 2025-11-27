@@ -19,6 +19,9 @@ public class EnemyData : ScriptableObject
     public int attackPower = 10;
     public float attackDelay = 1.0f; // 공격 애니메이션 속도 제어용
 
+    [Header("⭐ 고유 스킬 (복수 가능)")]
+    public List<EnemySkill> enemySkills = new List<EnemySkill>();
+
     [Header("🤖 행동 패턴 (AI)")]
     // 적이 사용할 수 있는 스킬 목록 (확률 혹은 순서대로 사용)
     public List<EnemyPattern> patterns;

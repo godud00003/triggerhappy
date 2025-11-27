@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fa3cd5fb9f3c184b9100f590318e71b, type: 3}
+  m_Name: Skill_TripleCombo
+  m_EditorClassIdentifier: Assembly-CSharp::Skill_TripleCombo
+  skillName: Triple Combo
+  description: 
+  skillIcon: {fileID: 4467217560519790291, guid: 6552591f1052bb846a153bcfd4d2902a, type: 3}
+  spCardToGenerate: {fileID: 11400000, guid: 5a629bd6685100e409b59164012f26fc, type: 2}
+  requiredCombo: 3

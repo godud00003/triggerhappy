@@ -19,6 +19,8 @@ MonoBehaviour:
   maxHp: 100
   defense: 0
   weaponStrategy: {fileID: 11400000, guid: b154aeb3c9444d843a9b73d90beeb367, type: 2}
+  characterSkills:
+  - {fileID: 11400000, guid: f35077b33206a4f4daf6ca9401275a55, type: 2}
   startingDeck:
   - {fileID: 11400000, guid: e69127a5cc9221545812bc7a902c5d4f, type: 2}
   - {fileID: 11400000, guid: e69127a5cc9221545812bc7a902c5d4f, type: 2}

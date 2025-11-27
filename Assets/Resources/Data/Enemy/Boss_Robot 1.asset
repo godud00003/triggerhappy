@@ -9,14 +9,15 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 100dba73b23713842ab91995fe49d771, type: 3}
-  m_Name: Boss_Robot
+  m_Script: {fileID: 11500000, guid: a364ba9d1a364744dbe11f383aa8d9ee, type: 3}
+  m_Name: Boss_Robot 1
   m_EditorClassIdentifier: Assembly-CSharp::EnemyData
-  enemyName: Killer Robot
+  enemyName: 
   description: 
-  sprite: {fileID: -3665590914495025489, guid: b99a7252800af064f9d588e082804963, type: 3}
+  sprite: {fileID: -3665590914495025489, guid: 8d2c3d0a52ab50f45a2a69a8b7641e88, type: 3}
   prefab: {fileID: 2434234997187995732, guid: d9592bef8314dc148adc84ca71edf314, type: 3}
   maxHp: 200
   attackPower: 20
-  attackDelay: 0.5
+  attackDelay: 1
+  enemySkills: []
   patterns: []
