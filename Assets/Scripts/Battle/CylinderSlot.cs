@@ -10,22 +10,21 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
     public CardData loadedCard;
 
     [Header("★ SP카드 여부")]
-    public bool isSpecialCard = false;  // SP카드인지 여부
+    public bool isSpecialCard = false;
 
     [Header("UI 연결")]
     public Image iconImage;
     public Text nameText;
 
     [Header("SP카드 시각 효과")]
-    public Color specialCardTint = new Color(1f, 0.85f, 0.4f); // 금색 틴트
-    public GameObject specialEffectObj; // 반짝이 이펙트 (선택)
+    public Color specialCardTint = new Color(1f, 0.85f, 0.4f);
+    public GameObject specialEffectObj;
 
     private Vector3 initialScale;
     private RectTransform rectTransform;
     private Vector2 originalAnchoredPos;
     private Canvas rootCanvas;
     private GameObject dragVisualObj;
-    private Color originalIconColor = Color.white;
 
     void Awake()
     {
@@ -42,6 +41,7 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
 
     void LateUpdate()
     {
+        // 슬롯이 회전하더라도 아이콘 등은 정방향 유지 (필요시)
         transform.rotation = Quaternion.identity;
     }
 
@@ -55,18 +55,24 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
             BulletCard card = droppedObj.GetComponent<BulletCard>();
             if (card != null && card.cardData != null)
             {
+                // [Fix] 장전 애니메이션 제거 및 즉시 처리
+
+                // 1. HandManager에서 제거
+                HandManager handManager = FindFirstObjectByType<HandManager>();
+                if (handManager != null) handManager.RemoveCard(droppedObj);
+
+                // 2. 데이터 장전
                 LoadBullet(card.cardData);
+
+                // 3. 드롭된 카드 오브젝트는 즉시 파괴 (슬롯 아이콘으로 대체됨)
                 Destroy(droppedObj);
 
-                // ★ 스킬 시스템에 알림
+                // 4. 스킬 시스템 알림
                 NotifyCardLoaded();
             }
         }
     }
 
-    /// <summary>
-    /// 카드 장전 (일반/SP카드 구분)
-    /// </summary>
     public void LoadBullet(CardData data, bool isSpecial = false)
     {
         isLoaded = true;
@@ -79,7 +85,6 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
             if (data.icon != null)
             {
                 iconImage.sprite = data.icon;
-                // SP카드면 특별한 색상
                 iconImage.color = isSpecial ? specialCardTint : Color.white;
             }
             else
@@ -89,20 +94,20 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
         }
         if (nameText) nameText.text = data.cardName;
 
-        // SP카드 이펙트
         if (specialEffectObj) specialEffectObj.SetActive(isSpecial);
 
+        // 장전 시 가볍게 흔들림 효과
         StartCoroutine(ShakeRoutine());
     }
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        // SP카드는 드래그로 해제 불가 (자동 소멸만 가능)
         if (!isLoaded || isSpecialCard) return;
 
         if (rootCanvas == null) rootCanvas = FindFirstObjectByType<Canvas>();
         if (rootCanvas == null || iconImage == null) return;
 
+        // 드래그 시작 시 시각적 아이콘 생성
         dragVisualObj = new GameObject("DragIcon");
         dragVisualObj.transform.SetParent(rootCanvas.transform);
         dragVisualObj.transform.localScale = Vector3.one;
@@ -112,6 +117,7 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
         img.color = iconImage.color;
         img.raycastTarget = false;
 
+        // 원본 아이콘 숨김
         iconImage.enabled = false;
         if (nameText) nameText.text = "";
     }
@@ -125,15 +131,13 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
     {
         if (!isLoaded || isSpecialCard) return;
 
+        // 드래그 종료 시 카드를 손패로 반환
         BattleManager gm = FindFirstObjectByType<BattleManager>();
         if (gm != null) gm.ReturnCardToHand(loadedCard);
 
-        // ★ 스킬 시스템에 알림 (해제 전에)
         int myIndex = slotIndex;
+        ClearSlot(sendToDiscard: false); // 슬롯 비우기 (묘지로 안 보냄)
 
-        ClearSlot(sendToDiscard: false);
-
-        // ★ 해제 후 스킬 체크
         if (gm != null) NotifyCardUnloaded(gm, myIndex);
 
         if (dragVisualObj != null) Destroy(dragVisualObj);
@@ -141,7 +145,7 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        // SP카드는 우클릭 해제 불가
+        // 우클릭 시 해제
         if (isLoaded && !isSpecialCard && eventData.button == PointerEventData.InputButton.Right)
         {
             BattleManager gm = FindFirstObjectByType<BattleManager>();
@@ -149,31 +153,16 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
 
             if (gm != null) gm.ReturnCardToHand(loadedCard);
             ClearSlot(sendToDiscard: false);
-
-            // ★ 해제 후 스킬 체크
             if (gm != null) NotifyCardUnloaded(gm, myIndex);
         }
     }
 
-    /// <summary>
-    /// 슬롯 비우기
-    /// </summary>
-    /// <param name="sendToDiscard">true면 묘지로, false면 그냥 소멸</param>
     public void ClearSlot(bool sendToDiscard = true)
     {
-        // 묘지로 보내기 (SP카드가 아니고, sendToDiscard가 true일 때만)
         if (sendToDiscard && loadedCard != null && !isSpecialCard)
         {
             BattleManager gm = FindFirstObjectByType<BattleManager>();
-            if (gm != null)
-            {
-                gm.DiscardCard(loadedCard);
-                Debug.Log($"🗑️ [Slot] '{loadedCard.cardName}' → 묘지");
-            }
-        }
-        else if (loadedCard != null && isSpecialCard)
-        {
-            Debug.Log($"💨 [Slot] SP카드 '{loadedCard.cardName}' 소멸!");
+            if (gm != null) gm.DiscardCard(loadedCard);
         }
 
         isLoaded = false;
@@ -189,9 +178,6 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
         if (specialEffectObj) specialEffectObj.SetActive(false);
     }
 
-    /// <summary>
-    /// 스킬 시스템에 카드 장전 알림
-    /// </summary>
     void NotifyCardLoaded()
     {
         BattleManager gm = FindFirstObjectByType<BattleManager>();
@@ -199,27 +185,18 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
         {
             foreach (var skill in gm.activeCharacter.characterSkills)
             {
-                if (skill != null)
-                {
-                    skill.OnCardLoaded(gm, slotIndex, loadedCard);
-                }
+                if (skill != null) skill.OnCardLoaded(gm, slotIndex, loadedCard);
             }
         }
     }
 
-    /// <summary>
-    /// 스킬 시스템에 카드 해제 알림
-    /// </summary>
     void NotifyCardUnloaded(BattleManager gm, int index)
     {
         if (gm != null && gm.activeCharacter != null && gm.activeCharacter.characterSkills != null)
         {
             foreach (var skill in gm.activeCharacter.characterSkills)
             {
-                if (skill != null)
-                {
-                    skill.OnCardUnloaded(gm, index);
-                }
+                if (skill != null) skill.OnCardUnloaded(gm, index);
             }
         }
     }
@@ -232,7 +209,7 @@ public class CylinderSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
     IEnumerator FireAnim()
     {
         transform.localScale = initialScale * 1.2f;
-        rectTransform.anchoredPosition = originalAnchoredPos + new Vector2(0, 50f);
+        rectTransform.anchoredPosition = originalAnchoredPos - new Vector2(0, 10f);
         yield return new WaitForSeconds(0.1f);
         transform.localScale = initialScale;
         rectTransform.anchoredPosition = originalAnchoredPos;

@@ -11,6 +11,10 @@ public abstract class CharacterSkill : ScriptableObject
     [TextArea] public string description;
     public Sprite skillIcon;
 
+    [Header("QTE 설정")]
+    public bool canTriggerQTE = false;  // 이 스킬이 QTE를 발동할 수 있는지
+    public float qteTimeLimit = 3f;      // QTE 제한 시간
+
     /// <summary>
     /// 슬롯에 카드가 장전될 때마다 호출
     /// </summary>
@@ -30,4 +34,26 @@ public abstract class CharacterSkill : ScriptableObject
     /// 턴 시작 시 호출
     /// </summary>
     public virtual void OnTurnStart(BattleManager manager) { }
+
+    /// <summary>
+    /// ★ QTE 조건 체크 - 발사 중 매 슬롯마다 호출
+    /// </summary>
+    /// <param name="manager">배틀 매니저</param>
+    /// <param name="slotIndex">현재 발사 중인 슬롯</param>
+    /// <param name="firedCard">발사된 카드</param>
+    /// <returns>true면 QTE 발동</returns>
+    public virtual bool CheckQTECondition(BattleManager manager, int slotIndex, CardData firedCard)
+    {
+        return false;
+    }
+
+    /// <summary>
+    /// ★ QTE 성공 시 호출 (캐릭터 교체 후)
+    /// </summary>
+    public virtual void OnQTESuccess(BattleManager manager, CharacterData newCharacter) { }
+
+    /// <summary>
+    /// ★ QTE 실패/시간초과 시 호출
+    /// </summary>
+    public virtual void OnQTEFailed(BattleManager manager) { }
 }

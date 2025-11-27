@@ -1,31 +1,22 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
+using System.Collections.Generic;
 
 // ==========================================
 // 실제 전투 로직을 담당하는 상태들 (Combat)
-// PlayerTurn -> Resolution <-> QTE -> EnemyTurn
 // ==========================================
 
-// -------------------------------------------------------------------------
-// 4. PlayerTurn: 플레이어의 입력 대기 및 턴 시작 처리
-// -------------------------------------------------------------------------
 public class State_PlayerTurn : BattleState
 {
     public State_PlayerTurn(BattleManager manager) : base(manager) { }
 
     public override void Enter()
     {
-        Debug.Log(">>> [State] PlayerTurn 시작");
-
-        // 턴 시작 시 SP(교체 포인트) 회복
         manager.RecoverSP();
-
-        // 손패 보충 시작
         manager.StartCoroutine(RefillHand());
     }
 
-    // 재장전 버튼 클릭 시 호출
     public void OnReload()
     {
         manager.StartCoroutine(ReloadRoutine());
@@ -33,28 +24,73 @@ public class State_PlayerTurn : BattleState
 
     IEnumerator RefillHand()
     {
-        // 손패가 5장 될 때까지 드로우 (하드코딩 대신 변수화 권장)
-        while (manager.handArea.childCount < 5)
+        int maxHandSize = 5;
+        HandManager handManager = manager.handArea.GetComponent<HandManager>();
+        int currentHandCount = (handManager != null) ? handManager.CardCount : manager.handArea.childCount;
+        int cardsToDraw = maxHandSize - currentHandCount;
+
+        for (int i = 0; i < cardsToDraw; i++)
         {
-            // 덱이 비었으면 버린 카드 섞어 넣기
             if (manager.currentDeck.Count == 0 && manager.currentDiscard.Count > 0)
             {
-                manager.currentDeck.AddRange(manager.currentDiscard);
-                manager.currentDiscard.Clear();
-                ShuffleDeck();
+                yield return manager.StartCoroutine(ShuffleDeckAnimation());
             }
 
-            // 드로우
             if (manager.currentDeck.Count > 0)
             {
                 CardData card = manager.currentDeck[0];
                 manager.currentDeck.RemoveAt(0);
 
                 GameObject obj = Object.Instantiate(manager.cardPrefab, manager.handArea);
-                obj.GetComponent<BulletCard>().Setup(card);
+                BulletCard bulletCard = obj.GetComponent<BulletCard>();
+                bulletCard.Setup(card);
+
+                Vector3 deckWorldPos = manager.handArea.position + Vector3.left * 400f;
+                if (manager.uiManager != null && manager.uiManager.deckCountText != null)
+                    deckWorldPos = manager.uiManager.deckCountText.transform.position;
+
+                if (handManager != null) handManager.AddCard(obj, deckWorldPos);
+                else
+                {
+                    CardAnimator animator = obj.GetComponent<CardAnimator>();
+                    if (animator == null) animator = obj.AddComponent<CardAnimator>();
+                    animator.PlayDrawAnimation(deckWorldPos);
+                }
             }
-            yield return new WaitForSeconds(0.1f);
+            yield return new WaitForSeconds(0.12f);
         }
+        manager.UpdateDeckUI();
+    }
+
+    IEnumerator ShuffleDeckAnimation()
+    {
+        Vector3 discardPos = manager.handArea.position + Vector3.right * 400f;
+        Vector3 deckPos = manager.handArea.position + Vector3.left * 400f;
+        if (manager.uiManager != null)
+        {
+            if (manager.uiManager.discardCountText) discardPos = manager.uiManager.discardCountText.transform.position;
+            if (manager.uiManager.deckCountText) deckPos = manager.uiManager.deckCountText.transform.position;
+        }
+
+        int visualCount = Mathf.Min(manager.currentDiscard.Count, 5);
+        for (int i = 0; i < visualCount; i++)
+        {
+            GameObject dummy = Object.Instantiate(manager.cardPrefab, manager.uiManager.transform);
+            dummy.transform.position = discardPos;
+            dummy.transform.localScale = Vector3.one * 0.1f;
+            Object.Destroy(dummy.GetComponent<BulletCard>());
+            Object.Destroy(dummy.GetComponent<Button>());
+
+            CardAnimator anim = dummy.GetComponent<CardAnimator>();
+            if (anim == null) anim = dummy.AddComponent<CardAnimator>();
+            anim.PlayShuffleAnimation(discardPos, deckPos, () => Object.Destroy(dummy));
+            yield return new WaitForSeconds(0.05f);
+        }
+        yield return new WaitForSeconds(0.5f);
+
+        manager.currentDeck.AddRange(manager.currentDiscard);
+        manager.currentDiscard.Clear();
+        ShuffleDeck();
         manager.UpdateDeckUI();
     }
 
@@ -71,21 +107,43 @@ public class State_PlayerTurn : BattleState
 
     IEnumerator ReloadRoutine()
     {
-        // 실린더 슬롯 비우기
+        HandManager handManager = manager.handArea.GetComponent<HandManager>();
+        Vector3 discardPos = manager.handArea.position + Vector3.right * 400f;
+        if (manager.uiManager != null && manager.uiManager.discardCountText != null)
+            discardPos = manager.uiManager.discardCountText.transform.position;
+
         foreach (var slot in manager.slots)
         {
             if (slot.isLoaded) manager.DiscardCard(slot.loadedCard);
             slot.ClearSlot();
         }
 
-        // 현재 손패 비우기
-        foreach (Transform child in manager.handArea)
+        if (handManager != null)
         {
-            BulletCard card = child.GetComponent<BulletCard>();
-            if (card) manager.DiscardCard(card.cardData);
-            Object.Destroy(child.gameObject);
-        }
+            List<GameObject> cardsToDiscard = new List<GameObject>();
+            foreach (Transform child in manager.handArea) cardsToDiscard.Add(child.gameObject);
+            handManager.ClearHand();
 
+            foreach (GameObject cardObj in cardsToDiscard)
+            {
+                BulletCard bullet = cardObj.GetComponent<BulletCard>();
+                if (bullet) manager.DiscardCard(bullet.cardData);
+
+                CardAnimator animator = cardObj.GetComponent<CardAnimator>();
+                if (animator == null) animator = cardObj.AddComponent<CardAnimator>();
+                animator.PlayDiscardAnimation(discardPos, () => Object.Destroy(cardObj));
+                yield return new WaitForSeconds(0.05f);
+            }
+        }
+        else
+        {
+            foreach (Transform child in manager.handArea)
+            {
+                BulletCard card = child.GetComponent<BulletCard>();
+                if (card) manager.DiscardCard(card.cardData);
+                Object.Destroy(child.gameObject);
+            }
+        }
         yield return new WaitForSeconds(0.5f);
         yield return manager.StartCoroutine(RefillHand());
     }
@@ -105,12 +163,9 @@ public class State_Resolution : BattleState
 
     IEnumerator FireSequence()
     {
-        // 슬롯 개수에 맞춰서 안전하게 순회
         int capacity = manager.slots.Count;
-
         if (capacity == 0)
         {
-            Debug.LogError("⛔ [Error] 슬롯이 없습니다! BattleUIManager 설정을 확인하세요.");
             manager.ChangeState(manager.stateEnemyTurn);
             yield break;
         }
@@ -119,239 +174,205 @@ public class State_Resolution : BattleState
 
         for (int i = 0; i < capacity; i++)
         {
-            // 1. 회전 연출
-            float targetZ = i * angleStep;
-            if (manager.cylinderPivot)
-                manager.cylinderPivot.rotation = Quaternion.Euler(0, 0, targetZ);
-
-            yield return new WaitForSeconds(0.15f);
-
             CylinderSlot slot = manager.slots[i];
 
             if (slot.isLoaded)
             {
-                // 2. QTE 트리거 체크
-                // (임시 조건: 카드 이름에 "QTE" 포함 시)
-                if (slot.loadedCard.cardName.Contains("QTE"))
+                CharacterSkill triggeringSkill = CheckQTEFromSkills(manager, i, slot.loadedCard);
+                if (triggeringSkill != null)
                 {
-                    Debug.Log("⚡ QTE Triggered!");
+                    manager.currentQTESkill = triggeringSkill;
                     manager.ChangeState(manager.stateQTE);
-                    yield break; // 발사 중단하고 QTE 상태로 전환
+                    yield break;
                 }
 
-                // 3. 카드 효과 발동 (★ 완료까지 대기)
+                // 1. 발사 애니메이션 연출 (카드 생성 -> 상단으로 날림)
+                if (manager.cardPrefab != null)
+                {
+                    GameObject visualCard = Object.Instantiate(manager.cardPrefab, slot.transform);
+                    visualCard.transform.localPosition = Vector3.zero;
+                    visualCard.transform.localScale = Vector3.one;
+
+                    BulletCard bc = visualCard.GetComponent<BulletCard>();
+                    if (bc) bc.Setup(slot.loadedCard);
+
+                    Object.Destroy(visualCard.GetComponent<Button>());
+                    Object.Destroy(visualCard.GetComponent<CylinderSlot>());
+
+                    // [Fix] 발사 시 슬롯 안의 카드 이미지는 즉시 숨김 (VisualCard가 날아가므로)
+                    if (slot.iconImage) slot.iconImage.enabled = false;
+                    if (slot.nameText) slot.nameText.text = "";
+                    if (slot.specialEffectObj) slot.specialEffectObj.SetActive(false);
+
+                    CardAnimator animator = visualCard.GetComponent<CardAnimator>();
+                    if (animator == null) animator = visualCard.AddComponent<CardAnimator>();
+
+                    // 화면 위쪽으로 날아가도록 목표 설정 (1자 발사)
+                    Vector3 upTargetPos = slot.transform.position + Vector3.up * 1500f;
+
+                    // 애니메이션 실행 (완료 후 제거)
+                    animator.PlayFireAnimation(upTargetPos, () => {
+                        Object.Destroy(visualCard);
+                    });
+
+                    // 1-1. 발사 애니메이션이 끝날 때까지 대기
+                    yield return new WaitForSeconds(animator.fireDuration);
+                }
+
+                slot.PlayFireEffect(); // 슬롯 자체의 반동 효과
+
+                // 2. 데미지/효과 처리 및 팝업
                 if (slot.loadedCard.actions != null)
                 {
                     foreach (var act in slot.loadedCard.actions)
                     {
                         if (act.effectLogic != null)
                         {
-                            // ★ 효과 실행하고 완료까지 대기
-                            yield return manager.StartCoroutine(
-                                ExecuteEffectAndWait(act.effectLogic, act.value)
-                            );
+                            yield return manager.StartCoroutine(ExecuteEffectAndWait(act.effectLogic, act.value));
                         }
                     }
                 }
 
-                // 4. 발사 이펙트 및 정리
-                slot.PlayFireEffect();
+                // 2-1. 팝업이 뜨고 나서 유저가 인지할 시간 대기
+                yield return new WaitForSeconds(0.4f);
 
-                // ★ SP카드는 소멸, 일반 카드는 묘지로
+                // 3. 카드 소멸/묘지행 처리
                 if (slot.isSpecialCard)
-                {
-                    Debug.Log($"💨 [SP Card] '{slot.loadedCard.cardName}' 소멸!");
-                    slot.ClearSlot(sendToDiscard: false); // 묘지로 안 감
-                }
+                    slot.ClearSlot(sendToDiscard: false);
                 else
-                {
-                    slot.ClearSlot(sendToDiscard: true); // 묘지로 감
-                }
+                    slot.ClearSlot(sendToDiscard: true);
 
-                // 적 사망 체크
                 if (manager.currentEnemy == null || manager.currentEnemy.currentHp <= 0)
                 {
-                    // ★ 승리 시에도 실린더 초기화
                     ResetCylinder();
-                    yield break; // 승리 처리는 BattleManager.ApplyDamageToEnemy에서 함
+                    yield break;
                 }
-
-                yield return new WaitForSeconds(0.2f);
             }
+            else
+            {
+                // 빈 슬롯은 빠르게 지나감
+                yield return new WaitForSeconds(0.1f);
+            }
+
+            // 4. 실린더 회전
+            float nextTargetZ = (i + 1) * angleStep;
+            if (manager.cylinderPivot)
+            {
+                manager.cylinderPivot.rotation = Quaternion.Euler(0, 0, nextTargetZ);
+            }
+            // 회전 연출 대기
+            yield return new WaitForSeconds(0.15f);
         }
 
-        // ★ 발사 완료 후 실린더 회전 초기화
         ResetCylinder();
-
-        // 모든 발사가 끝나면 적 턴으로 이동
         manager.ChangeState(manager.stateEnemyTurn);
     }
 
-    // ★ 카드 효과 실행 및 완료 대기 래퍼
     IEnumerator ExecuteEffectAndWait(CardEffect effect, int value)
     {
-        // 효과 실행 전 플래그 설정
         manager.isEffectRunning = true;
-
-        // 효과 실행
         effect.OnUse(manager, value);
-
-        // ★ 효과가 끝날 때까지 대기 (isEffectRunning이 false가 될 때까지)
-        while (manager.isEffectRunning)
-        {
-            yield return null;
-        }
+        while (manager.isEffectRunning) yield return null;
     }
 
-    // ★ 실린더 회전 초기화 메서드
     void ResetCylinder()
     {
         if (manager.cylinderPivot != null)
         {
             manager.cylinderPivot.rotation = Quaternion.identity;
-            Debug.Log("🔄 [Cylinder] 회전 초기화 완료");
-        }
-    }
-}
-
-// -------------------------------------------------------------------------
-// 6. QTE_Slow: 시간 감속 및 태그 (ZZZ 스타일)
-// -------------------------------------------------------------------------
-public class State_QTE_Slow : BattleState
-{
-    private float qteDuration = 3.0f; // 제한 시간
-    private float currentTimer;
-
-    public State_QTE_Slow(BattleManager manager) : base(manager) { }
-
-    public override void Enter()
-    {
-        Debug.Log("⚡ [State] QTE Time Start (Slow Motion)");
-
-        // 1. 시간 감속 (매트릭스 효과)
-        Time.timeScale = 0.1f;
-        Time.fixedDeltaTime = 0.02f * Time.timeScale;
-
-        currentTimer = qteDuration;
-
-        // 2. UI 활성화 및 초상화 세팅
-        if (manager.uiManager)
-        {
-            manager.uiManager.SetActiveQTE(true);
-
-            // [변경] 리스트 기반으로 서브 캐릭터 가져오기
-            // 0번 인덱스 = 좌클릭 대상, 1번 인덱스 = 우클릭 대상
-            CharacterData s1 = GetSubChar(0);
-            CharacterData s2 = GetSubChar(1);
-
-            manager.uiManager.SetupQTEPortraits(
-                s1, IsAlive(s1),
-                s2, IsAlive(s2)
-            );
         }
     }
 
-    // 헬퍼: 리스트 인덱스 안전 접근
-    CharacterData GetSubChar(int index)
+    CharacterSkill CheckQTEFromSkills(BattleManager manager, int slotIndex, CardData firedCard)
     {
-        if (manager.subCharacters != null && manager.subCharacters.Count > index)
+        if (manager.subCharacters == null) return null;
+        foreach (var subChar in manager.subCharacters)
         {
-            return manager.subCharacters[index];
+            if (subChar == null || subChar.characterSkills == null) continue;
+            if (!manager.characterHpMap.ContainsKey(subChar) || manager.characterHpMap[subChar] <= 0) continue;
+            foreach (var skill in subChar.characterSkills)
+            {
+                if (skill != null && skill.canTriggerQTE)
+                {
+                    if (skill.CheckQTECondition(manager, slotIndex, firedCard)) return skill;
+                }
+            }
         }
         return null;
     }
+}
 
-    // 헬퍼: 캐릭터 생존 여부 확인
+public class State_QTE_Slow : BattleState
+{
+    private float qteDuration = 3.0f;
+    private float currentTimer;
+    public State_QTE_Slow(BattleManager manager) : base(manager) { }
+    public override void Enter()
+    {
+        Debug.Log("⚡ [State] QTE Time Start (Slow Motion)");
+        if (manager.currentQTESkill != null) qteDuration = manager.currentQTESkill.qteTimeLimit;
+        Time.timeScale = 0.1f;
+        Time.fixedDeltaTime = 0.02f * Time.timeScale;
+        currentTimer = qteDuration;
+        if (manager.uiManager)
+        {
+            manager.uiManager.SetActiveQTE(true);
+            CharacterData s1 = GetSubChar(0);
+            CharacterData s2 = GetSubChar(1);
+            manager.uiManager.SetupQTEPortraits(s1, IsAlive(s1), s2, IsAlive(s2));
+        }
+    }
+    CharacterData GetSubChar(int index)
+    {
+        if (manager.subCharacters != null && manager.subCharacters.Count > index) return manager.subCharacters[index];
+        return null;
+    }
     bool IsAlive(CharacterData ch)
     {
-        return ch != null &&
-               manager.characterHpMap.ContainsKey(ch) &&
-               manager.characterHpMap[ch] > 0;
+        return ch != null && manager.characterHpMap.ContainsKey(ch) && manager.characterHpMap[ch] > 0;
     }
-
     public override void Execute()
     {
-        // 1. 타이머 감소 (UnscaledDeltaTime 사용 필수)
         currentTimer -= Time.unscaledDeltaTime;
-
-        if (manager.uiManager)
-            manager.uiManager.UpdateQTETimer(currentTimer / qteDuration);
-
-        // 2. 시간 초과 체크
+        if (manager.uiManager) manager.uiManager.UpdateQTETimer(currentTimer / qteDuration);
         if (currentTimer <= 0)
         {
-            Debug.Log("⏰ QTE 시간 초과! (교체 없이 진행)");
+            if (manager.currentQTESkill != null) manager.currentQTESkill.OnQTEFailed(manager);
+            manager.currentQTESkill = null;
             manager.ChangeState(manager.stateResolution);
             return;
         }
-
-        // 3. 입력 감지 (좌/우 클릭)
-        // [변경] 고정 변수 대신 리스트 인덱스로 접근
-        if (Input.GetMouseButtonDown(0))
-        {
-            TryTag(GetSubChar(0)); // 좌클릭 -> 리스트 0번 서브
-        }
-        else if (Input.GetMouseButtonDown(1))
-        {
-            TryTag(GetSubChar(1)); // 우클릭 -> 리스트 1번 서브
-        }
+        if (UnityEngine.Input.GetMouseButtonDown(0)) TryTag(GetSubChar(0));
+        else if (UnityEngine.Input.GetMouseButtonDown(1)) TryTag(GetSubChar(1));
     }
-
     void TryTag(CharacterData nextChar)
     {
         if (IsAlive(nextChar))
         {
+            if (manager.currentQTESkill != null) manager.currentQTESkill.OnQTESuccess(manager, nextChar);
             manager.SwapCharacter(nextChar);
-            // [연출] 여기에 카메라 줌인이나 특수 효과 추가 가능
-
-            // 태그 후 다시 발사 시퀀스로 복귀
+            manager.currentQTESkill = null;
             manager.ChangeState(manager.stateResolution);
         }
     }
-
     public override void Exit()
     {
-        // 시간 및 UI 원상 복구
         Time.timeScale = 1.0f;
         Time.fixedDeltaTime = 0.02f;
-
-        if (manager.uiManager)
-            manager.uiManager.SetActiveQTE(false);
-
-        // ★ QTE 끝나도 실린더 초기화
-        if (manager.cylinderPivot != null)
-        {
-            manager.cylinderPivot.rotation = Quaternion.identity;
-        }
+        if (manager.uiManager) manager.uiManager.SetActiveQTE(false);
     }
 }
 
-// -------------------------------------------------------------------------
-// 7. EnemyTurn: 적 공격 턴
-// -------------------------------------------------------------------------
 public class State_EnemyTurn : BattleState
 {
     public State_EnemyTurn(BattleManager manager) : base(manager) { }
-
-    public override void Enter()
-    {
-        manager.StartCoroutine(EnemyRoutine());
-    }
-
+    public override void Enter() { manager.StartCoroutine(EnemyRoutine()); }
     IEnumerator EnemyRoutine()
     {
         Debug.Log(">>> [State] EnemyTurn 시작");
         yield return new WaitForSeconds(0.5f);
-
-        if (manager.currentEnemy != null && manager.currentEnemy.gameObject.activeSelf)
-        {
-            manager.currentEnemy.DoAttack();
-        }
-
-        // 적 공격 연출 대기 (Enemy 스크립트의 AttackDelay와 맞추거나 콜백 사용 권장)
+        if (manager.currentEnemy != null && manager.currentEnemy.gameObject.activeSelf) manager.currentEnemy.DoAttack();
         yield return new WaitForSeconds(1.0f);
-
-        // 플레이어 턴으로 복귀
         manager.ChangeState(manager.statePlayerTurn);
     }
 }
